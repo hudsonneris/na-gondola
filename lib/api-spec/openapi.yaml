@@ -3,20 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Trade Marketing API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: stores
+    description: Store management
+  - name: products
+    description: Product management
+  - name: visits
+    description: Store visit management
+  - name: dashboard
+    description: Dashboard analytics
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,344 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /stores:
+    get:
+      operationId: listStores
+      tags: [stores]
+      summary: List all stores
+      responses:
+        "200":
+          description: List of stores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Store"
+    post:
+      operationId: createStore
+      tags: [stores]
+      summary: Create a store
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+
+  /stores/{id}:
+    get:
+      operationId: getStore
+      tags: [stores]
+      summary: Get a store by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+        "404":
+          description: Not found
+    put:
+      operationId: updateStore
+      tags: [stores]
+      summary: Update a store
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteStore
+      tags: [stores]
+      summary: Delete a store
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+    put:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /visits:
+    get:
+      operationId: listVisits
+      tags: [visits]
+      summary: List all visits
+      responses:
+        "200":
+          description: List of visits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Visit"
+    post:
+      operationId: createVisit
+      tags: [visits]
+      summary: Create a store visit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+
+  /visits/{id}:
+    get:
+      operationId: getVisit
+      tags: [visits]
+      summary: Get a visit by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Visit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+        "404":
+          description: Not found
+    put:
+      operationId: updateVisit
+      tags: [visits]
+      summary: Update a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteVisit
+      tags: [visits]
+      summary: Delete a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/out-of-stock:
+    get:
+      operationId: getOutOfStockReport
+      tags: [dashboard]
+      summary: Stores and products with out-of-stock items (from latest visit per store)
+      responses:
+        "200":
+          description: Out of stock items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OutOfStockItem"
+
+  /dashboard/poor-shelf:
+    get:
+      operationId: getPoorShelfReport
+      tags: [dashboard]
+      summary: Stores with bad shelf condition from recent visits
+      responses:
+        "200":
+          description: Poor shelf items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PoorShelfItem"
+
+  /dashboard/recent-visits:
+    get:
+      operationId: getRecentVisits
+      tags: [dashboard]
+      summary: Most recent store visits with store info
+      responses:
+        "200":
+          description: Recent visits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecentVisit"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +376,230 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Store:
+      type: object
+      required: [id, name, city, state, channel, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        channel:
+          type: string
+        createdAt:
+          type: string
+
+    StoreInput:
+      type: object
+      required: [name, city, state, channel]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        city:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          minLength: 1
+        channel:
+          type: string
+          minLength: 1
+
+    Product:
+      type: object
+      required: [id, name, category, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        createdAt:
+          type: string
+
+    ProductInput:
+      type: object
+      required: [name, category]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          minLength: 1
+
+    VisitItem:
+      type: object
+      required: [productId, inStock, price, shelfCondition]
+      properties:
+        productId:
+          type: integer
+        inStock:
+          type: boolean
+        price:
+          type: ["number", "null"]
+        shelfCondition:
+          type: string
+          enum: [good, regular, bad]
+        notes:
+          type: ["string", "null"]
+
+    VisitItemDetail:
+      type: object
+      required: [id, visitId, productId, productName, productCategory, inStock, price, shelfCondition, notes]
+      properties:
+        id:
+          type: integer
+        visitId:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        productCategory:
+          type: string
+        inStock:
+          type: boolean
+        price:
+          type: ["number", "null"]
+        shelfCondition:
+          type: string
+          enum: [good, regular, bad]
+        notes:
+          type: ["string", "null"]
+
+    VisitInput:
+      type: object
+      required: [storeId, visitedAt, items]
+      properties:
+        storeId:
+          type: integer
+        visitedAt:
+          type: string
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisitItem"
+
+    Visit:
+      type: object
+      required: [id, storeId, storeName, storeCity, storeState, storeChannel, visitedAt, notes, items]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        storeName:
+          type: string
+        storeCity:
+          type: string
+        storeState:
+          type: string
+        storeChannel:
+          type: string
+        visitedAt:
+          type: string
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisitItemDetail"
+
+    DashboardSummary:
+      type: object
+      required: [totalStores, totalProducts, totalVisits, outOfStockCount, poorShelfCount, visitsThisWeek]
+      properties:
+        totalStores:
+          type: integer
+        totalProducts:
+          type: integer
+        totalVisits:
+          type: integer
+        outOfStockCount:
+          type: integer
+        poorShelfCount:
+          type: integer
+        visitsThisWeek:
+          type: integer
+
+    OutOfStockItem:
+      type: object
+      required: [storeId, storeName, storeCity, storeChannel, productId, productName, productCategory, visitId, visitedAt]
+      properties:
+        storeId:
+          type: integer
+        storeName:
+          type: string
+        storeCity:
+          type: string
+        storeChannel:
+          type: string
+        productId:
+          type: integer
+        productName:
+          type: string
+        productCategory:
+          type: string
+        visitId:
+          type: integer
+        visitedAt:
+          type: string
+
+    PoorShelfItem:
+      type: object
+      required: [storeId, storeName, storeCity, storeChannel, productId, productName, shelfCondition, visitId, visitedAt]
+      properties:
+        storeId:
+          type: integer
+        storeName:
+          type: string
+        storeCity:
+          type: string
+        storeChannel:
+          type: string
+        productId:
+          type: integer
+        productName:
+          type: string
+        shelfCondition:
+          type: string
+        visitId:
+          type: integer
+        visitedAt:
+          type: string
+
+    RecentVisit:
+      type: object
+      required: [id, storeId, storeName, storeCity, storeChannel, visitedAt, itemCount, outOfStockCount, poorShelfCount]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        storeName:
+          type: string
+        storeCity:
+          type: string
+        storeChannel:
+          type: string
+        visitedAt:
+          type: string
+        notes:
+          type: ["string", "null"]
+        itemCount:
+          type: integer
+        outOfStockCount:
+          type: integer
+        poorShelfCount:
+          type: integer
