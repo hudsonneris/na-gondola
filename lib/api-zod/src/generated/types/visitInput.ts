@@ -6,11 +6,39 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { VisitItem } from './visitItem';
+import { z } from "zod";
 
+// 🔥 Definição original do Orval (mantida para compatibilidade)
 export interface VisitInput {
   storeId: number;
   visitedAt: string;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  checkIn?: string | null;
+  /** @nullable */
+  checkOut?: string | null;
+  status?: "pending" | "in_progress" | "completed" | "cancelled";
   items: VisitItem[];
 }
+
+// 🔥 Schema Zod para validação (adicionado manualmente)
+export const VisitInputSchema = z.object({
+  storeId: z.number(),
+  visitedAt: z.string(),
+  notes: z.string().nullable().optional(),
+  checkIn: z.string().nullable().optional(),
+  checkOut: z.string().nullable().optional(),
+  status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+  items: z.array(z.object({
+    productId: z.number(),
+    inStock: z.boolean(),
+    price: z.number().nullable().optional(),
+    shelfCondition: z.enum(["good", "regular", "bad"]),
+    notes: z.string().nullable().optional(),
+    problems: z.array(z.string()).optional(),
+  })),
+});
+
+// 🔥 Type inferido do Zod (para usar no código)
+export type VisitInputZod = z.infer<typeof VisitInputSchema>;

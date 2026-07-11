@@ -5,7 +5,9 @@
  * Trade Marketing API
  * OpenAPI spec version: 0.1.0
  */
+import { z } from "zod";
 
+// 🔥 Interface original (mantida para compatibilidade)
 export interface StoreInput {
   /** @minLength 1 */
   name: string;
@@ -15,4 +17,29 @@ export interface StoreInput {
   state: string;
   /** @minLength 1 */
   channel: string;
+  /** @optional */
+  storeType?: string;
+  /** @optional */
+  storeCode?: string;
+  /** @optional */
+  address?: string;
+  /** @optional */
+  chain?: string;
+  /** @optional */
+  visitValue?: number;
 }
+
+// 🔥 Schema Zod para validação
+export const StoreInputSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
+  channel: z.string().min(1, "Canal é obrigatório"),
+  storeType: z.string().optional(),
+  storeCode: z.string().optional(),
+  address: z.string().optional(),
+  chain: z.string().optional(),
+  visitValue: z.number().min(0).optional(),
+});
+
+export type StoreInputZod = z.infer<typeof StoreInputSchema>;

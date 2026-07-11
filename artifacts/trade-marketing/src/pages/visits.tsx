@@ -1,10 +1,11 @@
+import { useState, useEffect } from "react";
 import { useListVisits, useDeleteVisit, getListVisitsQueryKey, getGetRecentVisitsQueryKey, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, Eye, MapPin, Calendar } from "lucide-react";
+import { Plus, Trash2, Eye, MapPin, Calendar, Clock, Edit } from "lucide-react";
 import { Link } from "wouter";
 import { format, parseISO } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
@@ -17,8 +18,12 @@ export default function Visits() {
 
   const sortedVisits = visits ? [...visits].sort((a, b) => new Date(b.visitedAt).getTime() - new Date(a.visitedAt).getTime()) : [];
 
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this visit report?")) {
+  const handleDelete = (id: number, status?: string) => {
+    const message = status === 'draft' 
+      ? "Tem certeza que deseja excluir este rascunho?" 
+      : "Tem certeza que deseja excluir este relatório de visita?";
+
+    if (confirm(message)) {
       deleteVisit.mutate(
         { id },
         {
@@ -26,24 +31,46 @@ export default function Visits() {
             queryClient.invalidateQueries({ queryKey: getListVisitsQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetRecentVisitsQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-            toast({ description: "Visit deleted successfully" });
+            toast({ description: status === 'draft' ? "Rascunho excluído com sucesso" : "Visita excluída com sucesso" });
           },
         }
       );
     }
   };
 
+  const formatDuration = (minutes: number) => {
+    if (!minutes) return "-";
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins}min`;
+    return `${hours}h ${mins}min`;
+  };
+
+  // 🔥 Filtrar rascunhos separadamente
+  const draftVisits = sortedVisits.filter(v => v.status === 'draft');
+  const completedVisits = sortedVisits.filter(v => v.status !== 'draft' && v.status !== 'pending');
+  const pendingVisits = sortedVisits.filter(v => v.status === 'pending' || v.status === 'in_progress');
+
+  if (isLoading) {
+    return (
+      <div className="p-6 md:p-10 space-y-6 max-w-7xl mx-auto">
+        <Skeleton className="h-8 w-48 mb-6" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-7xl mx-auto flex flex-col h-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Visit Reports</h1>
-          <p className="text-muted-foreground mt-1">Audit log of all store field visits.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Relatórios de Visitas</h1>
+          <p className="text-muted-foreground mt-1">Registro de auditoria de todas as visitas em lojas.</p>
         </div>
         <Button asChild className="shrink-0 gap-2">
           <Link href="/visits/new">
             <Plus className="h-4 w-4" />
-            New Visit
+            Nova Visita
           </Link>
         </Button>
       </div>
@@ -52,31 +79,23 @@ export default function Visits() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Store</TableHead>
-              <TableHead>Products</TableHead>
-              <TableHead>Issues</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Data</TableHead>
+              <TableHead>Loja</TableHead>
+              <TableHead>Produtos</TableHead>
+              <TableHead>Problemas</TableHead>
+              <TableHead>Duração</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
-                </TableRow>
-              ))
-            ) : sortedVisits?.length === 0 ? (
+            {sortedVisits?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   <div className="flex flex-col items-center justify-center">
-                    <p>No visits recorded.</p>
+                    <p>Nenhuma visita registrada.</p>
                     <Button variant="link" asChild className="mt-2">
-                      <Link href="/visits/new">Start your first visit</Link>
+                      <Link href="/visits/new">Iniciar sua primeira visita</Link>
                     </Button>
                   </div>
                 </TableCell>
@@ -84,14 +103,32 @@ export default function Visits() {
             ) : (
               sortedVisits?.map((visit) => {
                 const outOfStockCount = visit.items.filter(i => !i.inStock).length;
-                const poorShelfCount = visit.items.filter(i => i.shelfCondition === 'bad').length;
-                
+                const poorShelfCount = visit.items.filter(i => i.supplyStatus?.includes('Fora de estoque') || false).length;
+                const isDraft = visit.status === 'draft';
+
                 return (
-                  <TableRow key={visit.id}>
+                  <TableRow key={visit.id} className={isDraft ? 'bg-muted/20' : ''}>
+                    <TableCell>
+                      {isDraft ? (
+                        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                          📝 Rascunho
+                        </Badge>
+                      ) : visit.status === 'completed' ? (
+                        <Badge variant="default" className="bg-green-100 text-green-800">
+                          ✅ Finalizada
+                        </Badge>
+                      ) : visit.status === 'in_progress' ? (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                          🔄 Em andamento
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">⏳ Pendente</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="font-mono text-sm">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {format(parseISO(visit.visitedAt), 'MMM d, yyyy')}
+                        {format(parseISO(visit.visitedAt), 'dd/MM/yyyy')}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -102,35 +139,58 @@ export default function Visits() {
                       <div className="text-xs text-muted-foreground">{visit.storeCity}, {visit.storeState}</div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{visit.items.length} items</Badge>
+                      <Badge variant="secondary">{visit.items.length} itens</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 flex-wrap max-w-xs">
                         {outOfStockCount > 0 && (
                           <Badge variant="destructive" className="bg-red-100 text-red-800 border-transparent text-[10px] px-1.5 py-0 h-5">
-                            {outOfStockCount} OOS
+                            {outOfStockCount} F.E.
                           </Badge>
                         )}
                         {poorShelfCount > 0 && (
                           <Badge variant="outline" className="border-yellow-500 text-yellow-700 bg-yellow-50 text-[10px] px-1.5 py-0 h-5">
-                            {poorShelfCount} Poor Shelf
+                            {poorShelfCount} Status
                           </Badge>
                         )}
                         {outOfStockCount === 0 && poorShelfCount === 0 && (
-                          <span className="text-xs text-muted-foreground italic">None</span>
+                          <span className="text-xs text-muted-foreground italic">Nenhum</span>
                         )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-sm font-mono">
+                          {formatDuration(visit.durationMinutes)}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/visits/${visit.id}`}>
-                            <Eye className="h-4 w-4 mr-1" /> View
-                          </Link>
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(visit.id)} className="text-destructive hover:text-destructive hover:bg-destructive/10">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isDraft ? (
+                          <>
+                            <Button variant="outline" size="sm" asChild>
+                              <Link href={`/visits/${visit.id}`}>
+                                <Edit className="h-4 w-4 mr-1" /> Continuar
+                              </Link>
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(visit.id, visit.status)} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button variant="outline" size="sm" asChild>
+                              <Link href={`/visits/${visit.id}`}>
+                                <Eye className="h-4 w-4 mr-1" /> Ver
+                              </Link>
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(visit.id, visit.status)} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

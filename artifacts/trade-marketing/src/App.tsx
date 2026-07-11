@@ -8,6 +8,14 @@ import Products from '@/pages/products';
 import Visits from '@/pages/visits';
 import VisitDetail from '@/pages/visit-detail';
 import NewVisit from '@/pages/visit-new';
+import Tasks from '@/pages/tasks';
+import Clients from '@/pages/clients';
+import Promoters from '@/pages/promoters';
+import SupplyStatus from '@/pages/supply-status';
+import Networks from '@/pages/networks';      // 🔥 NOVO
+import Categories from '@/pages/categories';  // 🔥 NOVO
+import Reports from '@/pages/reports';        // 🔥 NOVO
+import Login from '@/pages/login';            // 🔥 NOVO
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 
 const queryClient = new QueryClient({
@@ -35,6 +43,18 @@ function NotFound() {
 }
 
 function AppRouter() {
+  // 🔥 Simulação de autenticação
+  const isLoggedIn = true;
+
+  if (!isLoggedIn) {
+    return (
+      <Switch>
+        <Route path="/login" component={Login} />
+        <Route component={Login} />
+      </Switch>
+    );
+  }
+
   return (
     <Layout>
       <Switch>
@@ -45,6 +65,14 @@ function AppRouter() {
         <Route path="/visits" component={Visits} />
         <Route path="/visits/new" component={NewVisit} />
         <Route path="/visits/:id" component={VisitDetail} />
+        <Route path="/tasks" component={Tasks} />
+        <Route path="/clients" component={Clients} />
+        <Route path="/promoters" component={Promoters} />
+        <Route path="/supply-status" component={SupplyStatus} />
+        <Route path="/networks" component={Networks} />         // 🔥 NOVO
+        <Route path="/categories" component={Categories} />     // 🔥 NOVO
+        <Route path="/reports" component={Reports} />           // 🔥 NOVO
+        <Route path="/login" component={Login} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

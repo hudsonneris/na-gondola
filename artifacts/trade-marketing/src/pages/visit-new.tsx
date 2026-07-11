@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useLocation } from "wouter";
-import { useListStores, useListProducts, useCreateVisit, getListVisitsQueryKey, getGetRecentVisitsQueryKey, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
+import { useListProducts, useCreateVisit, getListVisitsQueryKey, getGetRecentVisitsQueryKey, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,23 +13,57 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, Plus, Trash2, Tag, Search } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, Search, Clock, Camera, Upload, X } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { useToast } from "@/components/ui/use-toast";
+import { Label } from "@/components/ui/label";
+
+// 🔥 Status do Abastecimento (Demanda 10)
+const SUPPLY_STATUS_OPTIONS = [
+  "Organizado",
+  "Abastecido",
+  "Regular",
+  "Bem posicionado",
+  "Completo",
+  "Fora de estoque",
+  "Vencido",
+  "Danificado",
+  "Sem etiqueta",
+  "Preço errado",
+  "Mal posicionado",
+];
+
+interface Store {
+  id: number;
+  name: string;
+  city: string;
+  networkId: number | null;
+  networkName?: string;
+}
+
+interface Network {
+  id: number;
+  name: string;
+}
 
 const visitItemSchema = z.object({
-  productId: z.number({ required_error: "Product is required" }),
+  productId: z.number({ required_error: "Produto é obrigatório" }),
   inStock: z.boolean(),
   price: z.coerce.number().nullable().optional(),
-  shelfCondition: z.enum(["good", "regular", "bad"], { required_error: "Select shelf condition" }),
   notes: z.string().nullable().optional(),
+  supplyStatus: z.array(z.string()).optional(),
 });
 
 const visitSchema = z.object({
-  storeId: z.number({ required_error: "Store is required" }),
-  visitedAt: z.string().min(1, "Date is required"),
+  networkId: z.number().nullable().optional(),
+  storeId: z.number({ required_error: "Loja é obrigatória" }),
+  visitedAt: z.string().min(1, "Data é obrigatória"),
   notes: z.string().nullable().optional(),
-  items: z.array(visitItemSchema).min(1, "At least one product reading is required"),
+  checkIn: z.string().nullable().optional(),
+  checkOut: z.string().nullable().optional(),
+  photoBefore: z.string().nullable().optional(),
+  photoAfter: z.string().nullable().optional(),
+  items: z.array(visitItemSchema).min(1, "Pelo menos um produto deve ser adicionado"),
 });
 
 type VisitFormValues = z.infer<typeof visitSchema>;
@@ -39,22 +73,42 @@ export default function NewVisit() {
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   const initialStoreId = searchParams.get("storeId");
-  
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createVisit = useCreateVisit();
-  
-  const { data: stores, isLoading: loadingStores } = useListStores();
+
   const { data: products, isLoading: loadingProducts } = useListProducts();
 
+  // 🔥 Estados para redes e lojas
+  const [networks, setNetworks] = useState<Network[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [filteredStores, setFilteredStores] = useState<Store[]>([]);
+  const [loadingStores, setLoadingStores] = useState(true);
+  const [loadingNetworks, setLoadingNetworks] = useState(true);
+
   const [productSearch, setProductSearch] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [draftId, setDraftId] = useState<number | null>(null);
+
+  const [photoBefore, setPhotoBefore] = useState<string | null>(null);
+  const [photoAfter, setPhotoAfter] = useState<string | null>(null);
+  const [uploadingBefore, setUploadingBefore] = useState(false);
+  const [uploadingAfter, setUploadingAfter] = useState(false);
 
   const form = useForm<VisitFormValues>({
     resolver: zodResolver(visitSchema),
     defaultValues: {
+      networkId: null,
       storeId: initialStoreId ? Number(initialStoreId) : undefined,
-      visitedAt: new Date().toISOString().substring(0, 16), // YYYY-MM-DDTHH:mm
+      visitedAt: new Date().toISOString().substring(0, 16),
       notes: "",
+      checkIn: "",
+      checkOut: "",
+      photoBefore: "",
+      photoAfter: "",
       items: [],
     },
   });
@@ -64,19 +118,96 @@ export default function NewVisit() {
     name: "items",
   });
 
+  // 🔥 Buscar redes e lojas
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Buscar redes
+        const networksRes = await fetch('/api/networks');
+        if (networksRes.ok) {
+          const data = await networksRes.json();
+          setNetworks(data);
+        }
+        setLoadingNetworks(false);
+
+        // Buscar lojas
+        const storesRes = await fetch('/api/stores');
+        if (storesRes.ok) {
+          const data = await storesRes.json();
+          setStores(data);
+          setFilteredStores(data);
+        }
+        setLoadingStores(false);
+      } catch (error) {
+        toast({ variant: "destructive", description: "Erro ao carregar dados" });
+        setLoadingNetworks(false);
+        setLoadingStores(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // 🔥 Filtrar lojas por rede selecionada
+  const selectedNetworkId = form.watch('networkId');
+  useEffect(() => {
+    if (selectedNetworkId) {
+      const filtered = stores.filter(s => s.networkId === selectedNetworkId);
+      setFilteredStores(filtered);
+    } else {
+      setFilteredStores(stores);
+    }
+  }, [selectedNetworkId, stores]);
+
+  const handleUpload = async (file: File, type: 'before' | 'after') => {
+    if (!form.getValues('storeId')) {
+      toast({ variant: "destructive", description: "Selecione uma loja primeiro" });
+      return;
+    }
+
+    const setUploading = type === 'before' ? setUploadingBefore : setUploadingAfter;
+    const setPhoto = type === 'before' ? setPhotoBefore : setPhotoAfter;
+    const fieldName = type === 'before' ? 'photoBefore' : 'photoAfter';
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', type);
+      formData.append('storeId', String(form.getValues('storeId')));
+
+      const response = await fetch('/api/upload/visit-photo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPhoto(data.url);
+        form.setValue(fieldName, data.url);
+        toast({ description: `Foto ${type === 'before' ? 'ANTES' : 'DEPOIS'} enviada!` });
+      } else {
+        toast({ variant: "destructive", description: "Erro ao enviar foto" });
+      }
+    } catch (error) {
+      toast({ variant: "destructive", description: "Erro ao enviar foto" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleAddAllProducts = () => {
     if (!products) return;
-    
+
     const existingProductIds = fields.map(f => f.productId);
     const productsToAdd = products.filter(p => !existingProductIds.includes(p.id));
-    
+
     productsToAdd.forEach(p => {
       append({
         productId: p.id,
         inStock: true,
         price: null,
-        shelfCondition: "good",
         notes: "",
+        supplyStatus: [],
       });
     });
   };
@@ -86,88 +217,237 @@ export default function NewVisit() {
       productId,
       inStock: true,
       price: null,
-      shelfCondition: "good",
       notes: "",
+      supplyStatus: [],
     });
     setProductSearch("");
   };
 
+  // 🔥 Salvamento automático como rascunho
+  const saveDraft = async (data: VisitFormValues) => {
+    if (!data.storeId) return;
+    if (isSaving) return;
+
+    setIsSaving(true);
+    try {
+      const formattedData = {
+        ...data,
+        visitedAt: new Date(data.visitedAt).toISOString(),
+        checkIn: data.checkIn ? new Date(data.checkIn).toISOString() : null,
+        checkOut: data.checkOut ? new Date(data.checkOut).toISOString() : null,
+        status: "draft",
+        photoBefore: data.photoBefore || null,
+        photoAfter: data.photoAfter || null,
+        items: data.items.map(item => ({
+          ...item,
+          price: item.price ?? null,
+          notes: item.notes ?? null,
+          supplyStatus: item.supplyStatus ?? [],
+        })),
+      };
+
+      if (draftId) {
+        const response = await fetch(`/api/visits/${draftId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formattedData),
+        });
+        if (response.ok) {
+          setHasChanges(false);
+        }
+      } else {
+        const response = await fetch('/api/visits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formattedData),
+        });
+        if (response.ok) {
+          const result = await response.json();
+          setDraftId(result.id);
+          setHasChanges(false);
+          toast({ 
+            description: "Rascunho salvo automaticamente!",
+            duration: 2000,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao salvar rascunho:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const watchedValues = form.watch();
+
+  useEffect(() => {
+    // Salva automaticamente qualquer alteração após 3 segundos
+    if (watchedValues.storeId && watchedValues.items?.length > 0) {
+      setHasChanges(true);
+
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+
+      const timeout = setTimeout(() => {
+        saveDraft(watchedValues);
+      }, 3000);
+
+      setSaveTimeout(timeout);
+    }
+
+    return () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+    };
+  }, [watchedValues]);
+
   const onSubmit = (data: VisitFormValues) => {
-    // ensure properly formatted datetime string
     const formattedData = {
       ...data,
       visitedAt: new Date(data.visitedAt).toISOString(),
+      checkIn: data.checkIn ? new Date(data.checkIn).toISOString() : null,
+      checkOut: data.checkOut ? new Date(data.checkOut).toISOString() : null,
+      status: "pending",
+      photoBefore: data.photoBefore || null,
+      photoAfter: data.photoAfter || null,
       items: data.items.map(item => ({
         ...item,
         price: item.price ?? null,
         notes: item.notes ?? null,
+        supplyStatus: item.supplyStatus ?? [],
       })),
     };
 
-    createVisit.mutate(
-      { data: formattedData },
-      {
-        onSuccess: (result) => {
-          queryClient.invalidateQueries({ queryKey: getListVisitsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetRecentVisitsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-          toast({ description: "Visit recorded successfully" });
-          setLocation(`/visits/${result.id}`);
-        },
-        onError: () => {
-          toast({ variant: "destructive", description: "Failed to record visit" });
+    if (draftId) {
+      fetch(`/api/visits/${draftId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formattedData),
+      })
+      .then(response => response.json())
+      .then(result => {
+        queryClient.invalidateQueries({ queryKey: getListVisitsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetRecentVisitsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+        toast({ description: "Visita registrada com sucesso!" });
+        setLocation(`/visits/${result.id}`);
+      })
+      .catch(() => {
+        toast({ variant: "destructive", description: "Falha ao registrar visita" });
+      });
+    } else {
+      createVisit.mutate(
+        { data: formattedData },
+        {
+          onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: getListVisitsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetRecentVisitsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+            toast({ description: "Visita registrada com sucesso!" });
+            setLocation(`/visits/${result.id}`);
+          },
+          onError: () => {
+            toast({ variant: "destructive", description: "Falha ao registrar visita" });
+          }
         }
-      }
-    );
+      );
+    }
   };
 
   const unaddedProducts = products?.filter(p => !fields.some(f => f.productId === p.id)) || [];
   const filteredUnaddedProducts = unaddedProducts.filter(p => 
     p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
-    p.category.toLowerCase().includes(productSearch.toLowerCase())
+    (p.categoryName && p.categoryName.toLowerCase().includes(productSearch.toLowerCase()))
   );
 
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center gap-4 mb-2">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/visits">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </Button>
-        <span className="text-sm font-medium text-muted-foreground">Cancel Visit</span>
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/visits">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          </Button>
+          <span className="text-sm font-medium text-muted-foreground">Cancelar Visita</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasChanges && (
+            <Badge variant="outline" className="text-xs animate-pulse">
+              {isSaving ? "💾 Salvando..." : "📝 Rascunho"}
+            </Badge>
+          )}
+          {draftId && (
+            <Badge variant="secondary" className="text-xs">
+              ID: #{draftId}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Record Visit</h1>
-        <p className="text-muted-foreground mt-1">Audit store inventory and shelf conditions.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Registrar Visita</h1>
+        <p className="text-muted-foreground mt-1">Auditoria de estoque e condições das gondolas.</p>
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
           <Card>
             <CardHeader>
-              <CardTitle>Visit Details</CardTitle>
+              <CardTitle>Detalhes da Visita</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-6">
+                {/* 🔥 Campo de Rede primeiro */}
+                <FormField
+                  control={form.control}
+                  name="networkId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Rede</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val ? Number(val) : null)} 
+                        value={field.value?.toString() || ''}
+                      >
+                        <FormControl>
+                          <SelectTrigger disabled={loadingNetworks}>
+                            <SelectValue placeholder={loadingNetworks ? "Carregando redes..." : "Selecione uma rede"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">Todas as redes</SelectItem>
+                          {networks.map((network) => (
+                            <SelectItem key={network.id} value={network.id.toString()}>
+                              {network.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* 🔥 Loja filtrada pela rede */}
                 <FormField
                   control={form.control}
                   name="storeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Store</FormLabel>
+                      <FormLabel>Loja</FormLabel>
                       <Select 
                         onValueChange={(val) => field.onChange(Number(val))} 
                         defaultValue={field.value?.toString()}
                       >
                         <FormControl>
                           <SelectTrigger disabled={loadingStores}>
-                            <SelectValue placeholder={loadingStores ? "Loading stores..." : "Select a store"} />
+                            <SelectValue placeholder={loadingStores ? "Carregando lojas..." : "Selecione uma loja"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {stores?.map((store) => (
+                          {filteredStores.map((store) => (
                             <SelectItem key={store.id} value={store.id.toString()}>
                               {store.name} ({store.city})
                             </SelectItem>
@@ -178,29 +458,30 @@ export default function NewVisit() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="visitedAt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Date & Time</FormLabel>
-                      <FormControl>
-                        <Input type="datetime-local" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
+
+              <FormField
+                control={form.control}
+                name="visitedAt"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data e Hora</FormLabel>
+                    <FormControl>
+                      <Input type="datetime-local" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>General Notes (Optional)</FormLabel>
+                    <FormLabel>Observações Gerais (Opcional)</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Any general observations about the store?" {...field} value={field.value || ''} />
+                      <Textarea placeholder="Alguma observação geral sobre a loja?" {...field} value={field.value || ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -209,14 +490,254 @@ export default function NewVisit() {
             </CardContent>
           </Card>
 
+          {/* Check-in/Check-out */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Controle de Visita
+              </CardTitle>
+              <CardDescription>Registre a entrada e saída da loja para controle de horas.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-4">
+                <div className="flex-1 min-w-[200px]">
+                  <FormField
+                    control={form.control}
+                    name="checkIn"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium">Check-in (Entrada)</FormLabel>
+                        <div className="flex items-center gap-2 mt-1">
+                          <FormControl>
+                            <Input 
+                              type="datetime-local" 
+                              {...field}
+                              value={field.value || ''}
+                              className="flex-1"
+                            />
+                          </FormControl>
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              const now = new Date().toISOString().substring(0, 16);
+                              field.onChange(now);
+                              toast({ description: "Check-in registrado!" });
+                            }}
+                          >
+                            <Clock className="h-4 w-4 mr-1" />
+                            Agora
+                          </Button>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="flex-1 min-w-[200px]">
+                  <FormField
+                    control={form.control}
+                    name="checkOut"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium">Check-out (Saída)</FormLabel>
+                        <div className="flex items-center gap-2 mt-1">
+                          <FormControl>
+                            <Input 
+                              type="datetime-local" 
+                              {...field}
+                              value={field.value || ''}
+                              className="flex-1"
+                            />
+                          </FormControl>
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              const now = new Date().toISOString().substring(0, 16);
+                              field.onChange(now);
+                              toast({ description: "Check-out registrado!" });
+                            }}
+                          >
+                            <Clock className="h-4 w-4 mr-1" />
+                            Agora
+                          </Button>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {form.watch('checkIn') && form.watch('checkOut') && (
+                <div className="bg-muted/30 rounded-lg p-3 flex items-center justify-between">
+                  <span className="text-sm font-medium">Duração da Visita:</span>
+                  <span className="text-lg font-bold text-primary">
+                    {(() => {
+                      const checkIn = new Date(form.watch('checkIn') as string);
+                      const checkOut = new Date(form.watch('checkOut') as string);
+                      const diffMs = checkOut.getTime() - checkIn.getTime();
+                      const hours = Math.floor(diffMs / 3600000);
+                      const minutes = Math.floor((diffMs % 3600000) / 60000);
+                      return `${hours}h ${minutes}min`;
+                    })()}
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Fotos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                Registro Fotográfico
+              </CardTitle>
+              <CardDescription>Faça upload das fotos ANTES e DEPOIS da organização.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Foto ANTES</Label>
+                    <Badge variant="outline" className="text-xs">Obrigatória</Badge>
+                  </div>
+                  <div 
+                    className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors ${photoBefore ? 'border-green-500 bg-green-50/20' : 'border-muted-foreground/20'}`}
+                    onClick={() => document.getElementById('photo-before-input')?.click()}
+                  >
+                    {photoBefore ? (
+                      <div className="relative">
+                        <img 
+                          src={photoBefore} 
+                          alt="Antes" 
+                          className="max-h-48 mx-auto rounded object-cover"
+                          onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+                        />
+                        <Button 
+                          type="button" 
+                          variant="destructive" 
+                          size="sm" 
+                          className="absolute top-2 right-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhotoBefore(null);
+                            form.setValue('photoBefore', '');
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Clique para trocar a foto
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="py-8">
+                        <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground mt-2">
+                          {uploadingBefore ? "Enviando..." : "Clique para enviar ou arraste a foto"}
+                        </p>
+                      </div>
+                    )}
+                    <input
+                      id="photo-before-input"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUpload(file, 'before');
+                      }}
+                      disabled={uploadingBefore}
+                    />
+                  </div>
+                  {photoBefore && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>Foto enviada em: {new Date().toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Foto DEPOIS</Label>
+                    <Badge variant="outline" className="text-xs">Obrigatória</Badge>
+                  </div>
+                  <div 
+                    className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors ${photoAfter ? 'border-green-500 bg-green-50/20' : 'border-muted-foreground/20'}`}
+                    onClick={() => document.getElementById('photo-after-input')?.click()}
+                  >
+                    {photoAfter ? (
+                      <div className="relative">
+                        <img 
+                          src={photoAfter} 
+                          alt="Depois" 
+                          className="max-h-48 mx-auto rounded object-cover"
+                          onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+                        />
+                        <Button 
+                          type="button" 
+                          variant="destructive" 
+                          size="sm" 
+                          className="absolute top-2 right-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhotoAfter(null);
+                            form.setValue('photoAfter', '');
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Clique para trocar a foto
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="py-8">
+                        <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground mt-2">
+                          {uploadingAfter ? "Enviando..." : "Clique para enviar ou arraste a foto"}
+                        </p>
+                      </div>
+                    )}
+                    <input
+                      id="photo-after-input"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUpload(file, 'after');
+                      }}
+                      disabled={uploadingAfter}
+                    />
+                  </div>
+                  {photoAfter && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>Foto enviada em: {new Date().toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Product Audit</CardTitle>
-                <CardDescription>Record metrics for specific products during this visit.</CardDescription>
+                <CardTitle>Auditoria de Produtos</CardTitle>
+                <CardDescription>Registre métricas para produtos específicos durante esta visita.</CardDescription>
               </div>
               <Button type="button" variant="outline" onClick={handleAddAllProducts} disabled={unaddedProducts.length === 0}>
-                Add All Products
+                Adicionar Todos os Produtos
               </Button>
             </CardHeader>
             <CardContent>
@@ -225,23 +746,23 @@ export default function NewVisit() {
                   {form.formState.errors.items.root.message}
                 </div>
               )}
-              
+
               {fields.length === 0 ? (
                 <div className="text-center py-10 border-2 border-dashed rounded-md bg-muted/20">
-                  <p className="text-muted-foreground mb-4">No products added to this audit yet.</p>
+                  <p className="text-muted-foreground mb-4">Nenhum produto adicionado a esta auditoria ainda.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {fields.map((field, index) => {
                     const product = products?.find(p => p.id === field.productId);
-                    
+
                     return (
                       <Card key={field.id} className="overflow-visible border border-border/50">
                         <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center justify-between space-y-0">
                           <div className="flex items-center gap-3">
-                            <h3 className="font-semibold">{product?.name || 'Unknown Product'}</h3>
+                            <h3 className="font-semibold">{product?.name || 'Produto Desconhecido'}</h3>
                             <Badge variant="outline" className="text-xs bg-background">
-                              {product?.category}
+                              {product?.categoryName || product?.category}
                             </Badge>
                           </div>
                           <Button 
@@ -256,15 +777,14 @@ export default function NewVisit() {
                         </CardHeader>
                         <CardContent className="p-4">
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                            
-                            <div className="md:col-span-2">
+                            <div className="md:col-span-3">
                               <FormField
                                 control={form.control}
                                 name={`items.${index}.inStock`}
                                 render={({ field }) => (
                                   <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-14">
                                     <div className="space-y-0.5">
-                                      <FormLabel className="text-xs">In Stock</FormLabel>
+                                      <FormLabel className="text-xs">Em Estoque</FormLabel>
                                     </div>
                                     <FormControl>
                                       <Switch
@@ -276,20 +796,20 @@ export default function NewVisit() {
                                 )}
                               />
                             </div>
-                            
+
                             <div className="md:col-span-3">
                               <FormField
                                 control={form.control}
                                 name={`items.${index}.price`}
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel className="text-xs">Shelf Price ($)</FormLabel>
+                                    <FormLabel className="text-xs">Preço na Gondola (R$)</FormLabel>
                                     <FormControl>
                                       <Input 
                                         type="number" 
                                         step="0.01" 
                                         min="0" 
-                                        placeholder="0.00" 
+                                        placeholder="0,00" 
                                         {...field} 
                                         value={field.value ?? ''}
                                       />
@@ -299,42 +819,17 @@ export default function NewVisit() {
                                 )}
                               />
                             </div>
-                            
-                            <div className="md:col-span-3">
-                              <FormField
-                                control={form.control}
-                                name={`items.${index}.shelfCondition`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel className="text-xs">Shelf Condition</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        <SelectItem value="good">Good</SelectItem>
-                                        <SelectItem value="regular">Regular</SelectItem>
-                                        <SelectItem value="bad">Bad</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                            
-                            <div className="md:col-span-4">
+
+                            <div className="md:col-span-6">
                               <FormField
                                 control={form.control}
                                 name={`items.${index}.notes`}
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel className="text-xs">Product Notes</FormLabel>
+                                    <FormLabel className="text-xs">Observações do Produto</FormLabel>
                                     <FormControl>
                                       <Input 
-                                        placeholder="Missing label, damaged box..." 
+                                        placeholder="Sem etiqueta, caixa danificada..." 
                                         {...field} 
                                         value={field.value || ''}
                                       />
@@ -344,7 +839,54 @@ export default function NewVisit() {
                                 )}
                               />
                             </div>
-                            
+
+                            {/* 🔥 Status do Abastecimento (Demanda 10) */}
+                            <div className="md:col-span-12">
+                              <FormField
+                                control={form.control}
+                                name={`items.${index}.supplyStatus`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs font-medium">Status do Abastecimento</FormLabel>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {SUPPLY_STATUS_OPTIONS.map((status) => {
+                                        const checked = field.value?.includes(status);
+                                        const isPositive = ["Organizado", "Abastecido", "Regular", "Bem posicionado", "Completo"].includes(status);
+
+                                        return (
+                                          <label
+                                            key={status}
+                                            className={`
+                                              flex items-center gap-2 text-sm border rounded-md px-3 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors
+                                              ${checked && isPositive ? 'bg-green-50 border-green-500 text-green-700' : ''}
+                                              ${checked && !isPositive ? 'bg-red-50 border-red-500 text-red-700' : ''}
+                                              ${!checked ? 'border-border hover:border-muted-foreground' : ''}
+                                            `}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={(e) => {
+                                                if (e.target.checked) {
+                                                  field.onChange([...(field.value || []), status]);
+                                                } else {
+                                                  field.onChange(
+                                                    (field.value || []).filter((s) => s !== status)
+                                                  );
+                                                }
+                                              }}
+                                              className="h-4 w-4 rounded border-gray-300"
+                                            />
+                                            {status}
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
@@ -355,11 +897,11 @@ export default function NewVisit() {
 
               {unaddedProducts.length > 0 && (
                 <div className="mt-6 border rounded-md p-4 bg-muted/10">
-                  <h4 className="text-sm font-medium mb-3">Add Products to Audit</h4>
+                  <h4 className="text-sm font-medium mb-3">Adicionar Produtos à Auditoria</h4>
                   <div className="relative mb-3">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Search products to add..." 
+                      placeholder="Buscar produtos para adicionar..." 
                       className="pl-8"
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
@@ -381,11 +923,11 @@ export default function NewVisit() {
                     ))}
                     {filteredUnaddedProducts.length > 20 && (
                       <span className="text-xs text-muted-foreground flex items-center px-2">
-                        +{filteredUnaddedProducts.length - 20} more
+                        +{filteredUnaddedProducts.length - 20} mais
                       </span>
                     )}
                     {filteredUnaddedProducts.length === 0 && (
-                      <span className="text-sm text-muted-foreground italic">No products match your search.</span>
+                      <span className="text-sm text-muted-foreground italic">Nenhum produto encontrado.</span>
                     )}
                   </div>
                 </div>
@@ -394,12 +936,15 @@ export default function NewVisit() {
           </Card>
 
           <div className="flex justify-end gap-4 sticky bottom-6 z-10 bg-background/80 backdrop-blur-md p-4 rounded-xl border shadow-lg">
+            <div className="flex-1 text-sm text-muted-foreground">
+              {draftId ? `Rascunho #${draftId} salvo automaticamente` : 'Preencha os dados para salvar rascunho'}
+            </div>
             <Button type="button" variant="outline" asChild>
-              <Link href="/visits">Cancel</Link>
+              <Link href="/visits">Cancelar</Link>
             </Button>
             <Button type="submit" disabled={createVisit.isPending} className="gap-2">
               <Save className="h-4 w-4" />
-              {createVisit.isPending ? "Saving..." : "Submit Visit Report"}
+              {createVisit.isPending ? "Salvando..." : draftId ? "Atualizar Visita" : "Enviar Relatório da Visita"}
             </Button>
           </div>
         </form>

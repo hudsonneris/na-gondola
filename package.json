@@ -13,7 +13,11 @@
     "@replit/connectors-sdk": "^0.4.1"
   },
   "devDependencies": {
+    "@types/multer": "^2.2.0",
+    "@types/uuid": "^11.0.0",
+    "multer": "^2.2.0",
     "prettier": "^3.9.4",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "uuid": "^14.0.1"
   }
 }

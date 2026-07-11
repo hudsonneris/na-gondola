@@ -5,10 +5,32 @@
  * Trade Marketing API
  * OpenAPI spec version: 0.1.0
  */
+import { z } from "zod";
 
+// 🔥 Interface original (mantida para compatibilidade com Orval)
 export interface ProductInput {
   /** @minLength 1 */
   name: string;
   /** @minLength 1 */
   category: string;
+  /** @optional */
+  brand?: string;
+  /** @optional */
+  sku?: string;
+  /** @default 0 */
+  stock?: number;
+  /** @optional */
+  imageUrl?: string;
 }
+
+// 🔥 Schema Zod para validação
+export const ProductInputSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório"),
+  category: z.string().min(1, "Categoria é obrigatória"),
+  brand: z.string().optional(),
+  sku: z.string().optional(),
+  stock: z.number().min(0).default(0),
+  imageUrl: z.string().url("URL inválida").optional().or(z.literal('')),
+});
+
+export type ProductInputZod = z.infer<typeof ProductInputSchema>;

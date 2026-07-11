@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
-import { Store, Package, MapPin, AlertTriangle, AlertCircle, Clock } from "lucide-react";
+import { Store, Package, MapPin, AlertTriangle, AlertCircle, Clock, Plus } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary();
@@ -15,45 +16,54 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Overview</h1>
-        <p className="text-muted-foreground mt-1">Field operations summary at a glance.</p>
+      {/* ✅ ADICIONADO: Botão Nova Visita */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Visão Geral</h1>
+          <p className="text-muted-foreground mt-1">Resumo das operações de campo em um relance.</p>
+        </div>
+        <Button asChild className="shrink-0 gap-2">
+          <Link href="/visits/new">
+            <Plus className="h-4 w-4" />
+            Nova Visita
+          </Link>
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
         <SummaryCard 
-          title="Total Stores" 
+          title="Total de Lojas" 
           value={summary?.totalStores} 
           icon={<Store className="h-5 w-5 text-muted-foreground" />} 
           loading={loadingSummary} 
         />
         <SummaryCard 
-          title="Total Products" 
+          title="Total de Produtos" 
           value={summary?.totalProducts} 
           icon={<Package className="h-5 w-5 text-muted-foreground" />} 
           loading={loadingSummary} 
         />
         <SummaryCard 
-          title="Total Visits" 
+          title="Total de Visitas" 
           value={summary?.totalVisits} 
           icon={<MapPin className="h-5 w-5 text-muted-foreground" />} 
           loading={loadingSummary} 
         />
         <SummaryCard 
-          title="Out of Stock" 
+          title="Fora de Estoque" 
           value={summary?.outOfStockCount} 
           icon={<AlertTriangle className="h-5 w-5 text-destructive" />} 
           loading={loadingSummary}
           valueClassName="text-destructive"
         />
         <SummaryCard 
-          title="Poor Shelf Condition" 
+          title="Condição Ruim de Gondola" 
           value={summary?.poorShelfCount} 
           icon={<AlertCircle className="h-5 w-5 text-yellow-500" />} 
           loading={loadingSummary}
         />
         <SummaryCard 
-          title="Visits This Week" 
+          title="Visitas Esta Semana" 
           value={summary?.visitsThisWeek} 
           icon={<Clock className="h-5 w-5 text-muted-foreground" />} 
           loading={loadingSummary} 
@@ -65,7 +75,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Out of Stock Issues
+              Problemas de Falta de Estoque
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -76,7 +86,7 @@ export default function Dashboard() {
                 <Skeleton className="h-12 w-full" />
               </div>
             ) : oosReport?.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No out of stock issues reported.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum problema de falta de estoque reportado.</p>
             ) : (
               <div className="space-y-4">
                 {oosReport?.slice(0, 5).map((item) => (
@@ -101,7 +111,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <AlertCircle className="h-5 w-5 text-yellow-500" />
-              Poor Shelf Conditions
+              Condições Ruins de Gondola
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -112,7 +122,7 @@ export default function Dashboard() {
                 <Skeleton className="h-12 w-full" />
               </div>
             ) : poorShelfReport?.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No poor shelf conditions reported.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma condição ruim de gondola reportada.</p>
             ) : (
               <div className="space-y-4">
                 {poorShelfReport?.slice(0, 5).map((item) => (
@@ -124,7 +134,8 @@ export default function Dashboard() {
                       </Link>
                     </div>
                     <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-200">
-                      {item.shelfCondition}
+                      {item.shelfCondition === "good" ? "Boa" : 
+                       item.shelfCondition === "regular" ? "Regular" : "Ruim"}
                     </Badge>
                   </div>
                 ))}
@@ -137,8 +148,8 @@ export default function Dashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center justify-between">
-            <span>Recent Visits</span>
-            <Link href="/visits" className="text-sm font-normal text-primary hover:underline">View all</Link>
+            <span>Visitas Recentes</span>
+            <Link href="/visits" className="text-sm font-normal text-primary hover:underline">Ver todas</Link>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -148,7 +159,7 @@ export default function Dashboard() {
               <Skeleton className="h-16 w-full" />
             </div>
           ) : recentVisits?.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No recent visits.</p>
+            <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma visita recente.</p>
           ) : (
             <div className="space-y-4">
               {recentVisits?.slice(0, 5).map((visit) => (
@@ -164,11 +175,11 @@ export default function Dashboard() {
                       </Link>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="secondary" className="text-xs font-normal">
-                          {visit.itemCount} items
+                          {visit.itemCount} itens
                         </Badge>
                         {visit.outOfStockCount > 0 && (
                           <Badge variant="outline" className="text-xs font-normal border-destructive text-destructive">
-                            {visit.outOfStockCount} OOS
+                            {visit.outOfStockCount} F.E.
                           </Badge>
                         )}
                       </div>
