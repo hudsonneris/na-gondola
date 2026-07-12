@@ -3,29 +3,21 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { storesTable } from "./stores";
 import { productsTable } from "./products";
-import { promotersTable } from "./promoters";
 
 export const visitsTable = pgTable("visits", {
   id: serial("id").primaryKey(),
   storeId: integer("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
-  promoterId: integer("promoter_id").references(() => promotersTable.id, { onDelete: "set null" }),
-  visitedAt: timestamp("visited_at").notNull(),
+  visitedAt: timestamp("visited_at", { mode: 'string' }).notNull(),
   notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-
-  // Check-in / Check-out
-  checkIn: timestamp("check_in"),
-  checkOut: timestamp("check_out"),
+  createdAt: timestamp("created_at", { mode: 'string' }),
+  checkIn: timestamp("check_in", { mode: 'string' }),
+  checkOut: timestamp("check_out", { mode: 'string' }),
   durationMinutes: integer("duration_minutes"),
-
-  // Status: pending, in_progress, completed, draft
-  status: text("status").notNull().default("draft"),
-
-  // Fotos
+  status: text("status").default('draft').notNull(),
   photoBefore: text("photo_before"),
   photoAfter: text("photo_after"),
-  photoBeforeTimestamp: timestamp("photo_before_timestamp"),
-  photoAfterTimestamp: timestamp("photo_after_timestamp"),
+  photoBeforeTimestamp: timestamp("photo_before_timestamp", { mode: 'string' }),
+  photoAfterTimestamp: timestamp("photo_after_timestamp", { mode: 'string' }),
   photoBeforeLocation: text("photo_before_location"),
   photoAfterLocation: text("photo_after_location"),
 });
@@ -34,12 +26,9 @@ export const visitItemsTable = pgTable("visit_items", {
   id: serial("id").primaryKey(),
   visitId: integer("visit_id").notNull().references(() => visitsTable.id, { onDelete: "cascade" }),
   productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
-
   inStock: boolean("in_stock").notNull(),
   price: numeric("price", { precision: 10, scale: 2 }),
-  // 🔥 REMOVIDO: shelfCondition (Demanda 4)
   notes: text("notes"),
-  // 🔥 RENOMEADO: problems → supplyStatus (Demanda 10)
   supplyStatus: text("supply_status").array().notNull().default([]),
 }, (t) => [
   { name: "visit_items_visit_product_unique", columns: [t.visitId, t.productId] },
